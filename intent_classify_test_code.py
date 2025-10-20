@@ -2,12 +2,24 @@
 import json
 import re
 import time
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import pandas as pd
 from pydantic import BaseModel, Field, ValidationError
+
+
+# -----------------------------
+# 로깅 (필요 시 수준/포맷 조정)
+# -----------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+logger = logging.getLogger("pipeline")
+
 
 # -----------------------------
 # 설정
@@ -18,9 +30,9 @@ INTENT_URL = "http://99.1.82.207:8080/llm-studio/v1/api/task/generate/syncapi/bu
 HEADERS = {"Content-Type": "application/json"}
 
 INPUT_XLSX = Path("test.xlsx")
-INPUT_COLUMN = "질의 내용"  # ← 공백 포함 주의
-RESULTS_JSONL = Path("results.jsonl")  # 두 단계 모두 성공한 케이스만
-FAILED_JSONL = Path("failed.jsonl")  # 실패 케이스만
+INPUT_COLUMN = "질의 내용"  # ← 공백 포함
+RESULTS_JSONL = Path("results.jsonl")   # 두 단계 모두 성공
+FAILED_JSONL = Path("failed.jsonl")     # 실패만
 
 TIMEOUT_SEC = 30.0
 RETRY = 2
@@ -34,13 +46,14 @@ class QueryInfo(BaseModel):
     query_complete: Optional[str] = Field(default=None)
     search_queries: Optional[List[str]] = Field(default=None)
 
-
 def parse_query_answer(answer: str) -> Dict[str, Any]:
     """
-    사용자가 제공한 정규식/모델을 그대로 사용하여 query_complete 등을 추출.
-    - 파싱 실패 시 ValidationError를 던지지 않고 {'error': "..."} 형태 반환.
+    쿼리 확장 응답(answer)에서 query_complete 등을 추출.
+    사용자가 제공한 정규식/모델을 그대로 사용.
+    실패 시 {'error': "..."} 형태 반환.
     """
     try:
+        logger.info("get_parsed_query called")
         pattern = r"\{\s*(\"|\')query_complete.*?\s*\]\s*\}"
         match = re.search(pattern, answer, re.DOTALL)
         if not match:
@@ -54,12 +67,38 @@ def parse_query_answer(answer: str) -> Dict[str, Any]:
         return {"error": f"parse_exception: {repr(e)}"}
 
 
+class Intent(BaseModel):
+    no: int | str
+    intent_name: str
+
+class IntentInfo(BaseModel):
+    intent: Optional[Intent] = Field(default=None)
+
+def parse_intent_answer(answer: str) -> Dict[str, Any]:
+    """
+    의도분석 응답(answer)에서 intent 객체를 추출.
+    사용자가 제공한 정규식/모델을 그대로 사용.
+    실패 시 {'error': "..."} 형태 반환.
+    """
+    try:
+        logger.info("get_parsed_intent called")
+        pattern = r"\{\s*(\"|\')intent.*?\s*\}*\s*\}"
+        match = re.search(pattern, answer, re.DOTALL)
+        if not match:
+            return {"error": "no_json_block_matched"}
+        json_string = match.group(0)
+        parsed = IntentInfo.model_validate_json(json_string).model_dump()
+        return parsed
+    except ValidationError as ve:
+        return {"error": f"validation_error: {ve}"}
+    except Exception as e:
+        return {"error": f"parse_exception: {repr(e)}"}
+
+
 # -----------------------------
 # HTTP 유틸
 # -----------------------------
-def post_json(
-    client: httpx.Client, url: str, payload: Dict[str, Any]
-) -> Tuple[int, Dict[str, Any], float]:
+def post_json(client: httpx.Client, url: str, payload: Dict[str, Any]) -> Tuple[int, Dict[str, Any], float]:
     """
     POST -> (status_code, json_body_or_text_wrapped, elapsed_sec)
     JSON 파싱 실패 시 {'raw_text': resp.text}로 감싼다.
@@ -73,10 +112,7 @@ def post_json(
         body = {"raw_text": resp.text}
     return resp.status_code, body, elapsed
 
-
-def robust_post(
-    client: httpx.Client, url: str, payload: Dict[str, Any]
-) -> Dict[str, Any]:
+def robust_post(client: httpx.Client, url: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     재시도 포함 POST. 항상 dict 반환.
     """
@@ -91,12 +127,7 @@ def robust_post(
             attempt += 1
             if attempt <= RETRY:
                 time.sleep(0.5)
-    return {
-        "status_code": None,
-        "elapsed_sec": None,
-        "error": repr(last_exc),
-        "response": None,
-    }
+    return {"status_code": None, "elapsed_sec": None, "error": repr(last_exc), "response": None}
 
 
 # -----------------------------
@@ -136,22 +167,16 @@ def main() -> None:
             expand_payload = {"user_query": original_query, "stream": False}
             expand_call = robust_post(client, EXPAND_URL, expand_payload)
 
-            # 실패(네트워크/HTTP) 체크
-            if not (
-                expand_call.get("status_code")
-                and 200 <= expand_call["status_code"] < 300
-            ):
-                results_failed.append(
-                    {
-                        "stage": "expand_api",
-                        "reason": "http_error",
-                        "original_user_query": original_query,
-                        "expand_request": expand_payload,
-                        "expand_result": expand_call,
-                    }
-                )
-                if PAUSE:
-                    time.sleep(PAUSE)
+            # HTTP 실패 체크
+            if not (expand_call.get("status_code") and 200 <= expand_call["status_code"] < 300):
+                results_failed.append({
+                    "stage": "expand_api",
+                    "reason": "http_error",
+                    "original_user_query": original_query,
+                    "expand_request": expand_payload,
+                    "expand_result": expand_call,
+                })
+                if PAUSE: time.sleep(PAUSE)
                 continue
 
             # 응답에서 answer 추출
@@ -159,37 +184,31 @@ def main() -> None:
             llm_result = (expand_body or {}).get("llm_result", {})
             answer = llm_result.get("answer")
             if not isinstance(answer, str):
-                results_failed.append(
-                    {
-                        "stage": "expand_parse",
-                        "reason": "answer_not_string",
-                        "original_user_query": original_query,
-                        "expand_request": expand_payload,
-                        "expand_result": expand_call,
-                    }
-                )
-                if PAUSE:
-                    time.sleep(PAUSE)
+                results_failed.append({
+                    "stage": "expand_parse",
+                    "reason": "answer_not_string",
+                    "original_user_query": original_query,
+                    "expand_request": expand_payload,
+                    "expand_result": expand_call,
+                })
+                if PAUSE: time.sleep(PAUSE)
                 continue
 
             # 2) 파싱 (query_complete 얻기)
-            parsed = parse_query_answer(answer)
-            if "error" in parsed or not parsed.get("query_complete"):
-                results_failed.append(
-                    {
-                        "stage": "expand_parse",
-                        "reason": parsed.get("error") or "missing_query_complete",
-                        "original_user_query": original_query,
-                        "expand_request": expand_payload,
-                        "expand_result": expand_call,
-                        "parsed": parsed,
-                    }
-                )
-                if PAUSE:
-                    time.sleep(PAUSE)
+            parsed_query = parse_query_answer(answer)
+            if "error" in parsed_query or not parsed_query.get("query_complete"):
+                results_failed.append({
+                    "stage": "expand_parse",
+                    "reason": parsed_query.get("error") or "missing_query_complete",
+                    "original_user_query": original_query,
+                    "expand_request": expand_payload,
+                    "expand_result": expand_call,
+                    "parsed_query": parsed_query,
+                })
+                if PAUSE: time.sleep(PAUSE)
                 continue
 
-            query_complete = parsed["query_complete"]
+            query_complete = parsed_query["query_complete"]
 
             # -------------------------
             # 3) 의도분석 요청 (user_query=query_complete)
@@ -197,48 +216,76 @@ def main() -> None:
             intent_payload = {"user_query": query_complete}
             intent_call = robust_post(client, INTENT_URL, intent_payload)
 
-            if not (
-                intent_call.get("status_code")
-                and 200 <= intent_call["status_code"] < 300
-            ):
-                results_failed.append(
-                    {
-                        "stage": "intent_api",
-                        "reason": "http_error",
-                        "original_user_query": original_query,
-                        "query_complete": query_complete,
-                        "expand_request": expand_payload,
-                        "expand_result": expand_call,
-                        "parsed": parsed,
-                        "intent_request": intent_payload,
-                        "intent_result": intent_call,
-                    }
-                )
-                if PAUSE:
-                    time.sleep(PAUSE)
+            if not (intent_call.get("status_code") and 200 <= intent_call["status_code"] < 300):
+                results_failed.append({
+                    "stage": "intent_api",
+                    "reason": "http_error",
+                    "original_user_query": original_query,
+                    "query_complete": query_complete,
+                    "expand_request": expand_payload,
+                    "expand_result": expand_call,
+                    "parsed_query": parsed_query,
+                    "intent_request": intent_payload,
+                    "intent_result": intent_call,
+                })
+                if PAUSE: time.sleep(PAUSE)
                 continue
 
-            # 두 단계 모두 성공 → results.jsonl 저장용 레코드 구성
-            results_ok.append(
-                {
+            # 의도분석 응답에서 answer 추출
+            intent_body = intent_call["response"] or {}
+            intent_llm_result = (intent_body or {}).get("llm_result", {})
+            intent_answer = intent_llm_result.get("answer")
+            if not isinstance(intent_answer, str):
+                results_failed.append({
+                    "stage": "intent_parse",
+                    "reason": "answer_not_string",
                     "original_user_query": original_query,
-                    "expand": {
-                        "request": expand_payload,
-                        "result": expand_call,
-                    },
-                    "parsed": parsed,  # {"query_complete": ..., "search_queries": [...]}
-                    "intent": {
-                        "request": intent_payload,
-                        "result": intent_call,
-                    },
-                }
-            )
+                    "query_complete": query_complete,
+                    "expand_request": expand_payload,
+                    "expand_result": expand_call,
+                    "parsed_query": parsed_query,
+                    "intent_request": intent_payload,
+                    "intent_result": intent_call,
+                })
+                if PAUSE: time.sleep(PAUSE)
+                continue
+
+            # 4) 파싱 (intent 추출)  ← 신규 단계
+            parsed_intent = parse_intent_answer(intent_answer)
+            if "error" in parsed_intent or not parsed_intent.get("intent"):
+                results_failed.append({
+                    "stage": "intent_parse",
+                    "reason": parsed_intent.get("error") or "missing_intent",
+                    "original_user_query": original_query,
+                    "query_complete": query_complete,
+                    "expand_request": expand_payload,
+                    "expand_result": expand_call,
+                    "parsed_query": parsed_query,
+                    "intent_request": intent_payload,
+                    "intent_result": intent_call,
+                    "parsed_intent": parsed_intent,
+                })
+                if PAUSE: time.sleep(PAUSE)
+                continue
+
+            # 두 단계 모두 성공 → results.jsonl 저장용 레코드
+            results_ok.append({
+                "original_user_query": original_query,
+                "expand": {
+                    "request": expand_payload,
+                    "result": expand_call,
+                },
+                "parsed_query": parsed_query,     # {"query_complete": ..., "search_queries": [...]}
+                "intent": {
+                    "request": intent_payload,
+                    "result": intent_call,
+                },
+                "parsed_intent": parsed_intent,   # {"intent": {"no": ..., "intent_name": ...}}
+            })
 
             # 진행상황 출력
             if i % 10 == 0 or i == total:
-                print(
-                    f"[{i}/{total}] 진행… 성공 {len(results_ok)}건, 실패 {len(results_failed)}건"
-                )
+                print(f"[{i}/{total}] 진행… 성공 {len(results_ok)}건, 실패 {len(results_failed)}건")
 
             if PAUSE:
                 time.sleep(PAUSE)
