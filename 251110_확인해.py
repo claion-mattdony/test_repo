@@ -6,45 +6,38 @@
 - 실패: JSONL (에러 정보 포함)
 """
 
-import time  # <-- 추가
 import asyncio
 import json
 import os
+import time  # <-- 추가
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import pandas as pd
 
-
 # -----------------------------
 # 설정(필요 시 조절)
 # -----------------------------
-CONCURRENCY = 10         # 동시에 요청할 최대 개수
-TIMEOUT_SEC = 30         # httpx timeout
-RETRIES = 2              # 실패 시 재시도 횟수
-BACKOFF_BASE = 0.8       # 지수 백오프 기본(초)
-ENCODING = "utf-8"       # 파일 저장 인코딩
-EXCEL_ENGINE = None      # 필요 시 "openpyxl" 등 지정 가능
+CONCURRENCY = 10  # 동시에 요청할 최대 개수
+TIMEOUT_SEC = 30  # httpx timeout
+RETRIES = 2  # 실패 시 재시도 횟수
+BACKOFF_BASE = 0.8  # 지수 백오프 기본(초)
+ENCODING = "utf-8"  # 파일 저장 인코딩
+EXCEL_ENGINE = None  # 필요 시 "openpyxl" 등 지정 가능
 
-MAX_CNT=50
-USE_BREAKER=False
-PRE_LIMIT=40
+MAX_CNT = 50
+USE_BREAKER = False
+PRE_LIMIT = 40
 
 # -----------------------------
 # 주신 케이스 구성 (파이썬 dict 로 그대로 사용)
 # -----------------------------
 CASES: Dict[str, Dict[str, Any]] = {
     "case0": {
-        "input_files": [
-            "test_datas/FAQ 공통 기반 질문.xlsx"
-        ],
-        "output_files": [
-            "outputs/251105_faq_results_100.jsonl"
-        ],
-        "err_files": [
-            "outputs/251105_faq_errs_100.jsonl"
-        ],
+        "input_files": ["test_datas/FAQ 공통 기반 질문.xlsx"],
+        "output_files": ["outputs/251105_faq_results_100.jsonl"],
+        "err_files": ["outputs/251105_faq_errs_100.jsonl"],
         # "url": "http://99.1.82.184:28080/api/v1/qdrant/retrieve-with-time",
         "url": "http://99.1.82.184:28080/api/v1/qdrant/retrieve",
         "headers": {"Content-Type": "application/json", "Accept": "application/json"},
@@ -56,17 +49,20 @@ CASES: Dict[str, Dict[str, Any]] = {
             "reranking": {
                 "is_active": True,
                 "target": "text",
-                "include_summary": False
+                "include_summary": False,
             },
             "filters": [
                 {
                     "key": "group",
                     "values": [
-                        "내부자료", "온나라", "부산광역시 홈페이지", "자치법규정보시스템"
-                    ]
+                        "내부자료",
+                        "온나라",
+                        "부산광역시 홈페이지",
+                        "자치법규정보시스템",
+                    ],
                 }
-            ]
-        }
+            ],
+        },
     },
 }
 
@@ -92,7 +88,8 @@ def load_dataframe(excel_path: str) -> pd.DataFrame:
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise ValueError(f"엑셀({excel_path})에 필수 컬럼이 없습니다: {missing}")
-    return df
+    # 입력 순서를 명확히 유지하기 위해 인덱스 리셋 (권장)
+    return df.reset_index(drop=True)
 
 
 @dataclass
@@ -121,7 +118,9 @@ def build_body(base_body: Dict[str, Any], question: str) -> Dict[str, Any]:
     return body
 
 
-def success_record(row: pd.Series, api_json: Any, latency: float | None) -> Dict[str, Any]:
+def success_record(
+    row: pd.Series, api_json: Any, latency: float | None
+) -> Dict[str, Any]:
     return {
         "부서명": str(row["부서명"]),
         "질의문": str(row["질의문"]),
@@ -130,7 +129,9 @@ def success_record(row: pd.Series, api_json: Any, latency: float | None) -> Dict
     }
 
 
-def error_record(row: Optional[pd.Series], err_type: str, message: str, status: Optional[int] = None) -> Dict[str, Any]:
+def error_record(
+    row: Optional[pd.Series], err_type: str, message: str, status: Optional[int] = None
+) -> Dict[str, Any]:
     base = {
         "부서명": str(row["부서명"]) if row is not None and "부서명" in row else "",
         "질의문": str(row["질의문"]) if row is not None and "질의문" in row else "",
@@ -167,22 +168,27 @@ async def request_with_retry(
             else:
                 err_text = resp.text
                 if attempt < RETRIES:
-                    await asyncio.sleep((BACKOFF_BASE * (2 ** attempt)))
+                    await asyncio.sleep((BACKOFF_BASE * (2**attempt)))
                     continue
-                return False, None, resp.status_code, f"HTTP {resp.status_code}: {err_text}", None
+                return (
+                    False,
+                    None,
+                    resp.status_code,
+                    f"HTTP {resp.status_code}: {err_text}",
+                    None,
+                )
         except httpx.ReadTimeout:
             if attempt < RETRIES:
-                await asyncio.sleep((BACKOFF_BASE * (2 ** attempt)))
+                await asyncio.sleep((BACKOFF_BASE * (2**attempt)))
                 continue
             return False, None, None, "timeout", None
         except Exception as e:
             if attempt < RETRIES:
-                await asyncio.sleep((BACKOFF_BASE * (2 ** attempt)))
+                await asyncio.sleep((BACKOFF_BASE * (2**attempt)))
                 continue
             return False, None, None, f"exception: {repr(e)}", None
 
     return False, None, None, "unknown", None
-
 
 
 async def process_one_row(
@@ -209,30 +215,29 @@ async def process_one_row(
     else:
         return None, error_record(
             row,
-            "http_status" if status else ("timeout" if err_msg == "timeout" else "exception"),
+            "http_status"
+            if status
+            else ("timeout" if err_msg == "timeout" else "exception"),
             err_msg or "",
             status,
         )
-
 
 
 async def process_case(case_name: str, conf: Dict[str, Any]) -> None:
     print(f"[{case_name}] 시작")
     io_pairs = pair_io(conf)
 
-    # HTTP 클라이언트 & 세마포어
     sem = asyncio.Semaphore(CONCURRENCY)
     async with httpx.AsyncClient(timeout=TIMEOUT_SEC) as client:
         for io in io_pairs:
             print(f"  - 입력: {io.input_path}")
             df = load_dataframe(io.input_path)
 
-            # 출력 파일 경로 준비(존재하면 append, 새로 만들 디렉토리 ensure)
             ensure_dir_for_file(io.out_path)
             ensure_dir_for_file(io.err_path)
 
             tasks = []
-            for _, row in df.iterrows():
+            for i, row in df.iterrows():
                 tasks.append(
                     process_one_row(
                         sem=sem,
@@ -243,19 +248,18 @@ async def process_case(case_name: str, conf: Dict[str, Any]) -> None:
                         row=row,
                     )
                 )
+                if USE_BREAKER and (i + 1) == MAX_CNT:
+                    break
 
-                if USE_BREAKER:
-                    if (_ + 1) == MAX_CNT:
-                        break
+            # ✅ 입력(엑셀) 순서를 그대로 보장
+            results = await asyncio.gather(*tasks)
 
             success_batch: List[Dict[str, Any]] = []
             error_batch: List[Dict[str, Any]] = []
-
-            # 결과 수시 flush (메모리 과다 방지)
             FLUSH_EVERY = 200
 
-            for idx, coro in enumerate(asyncio.as_completed(tasks), start=1):
-                success_row, error_row = await coro
+            # gather는 tasks를 만든 순서대로 결과를 돌려줍니다.
+            for idx, (success_row, error_row) in enumerate(results, start=1):
                 if success_row:
                     success_batch.append(success_row)
                 if error_row:
@@ -275,7 +279,9 @@ async def process_case(case_name: str, conf: Dict[str, Any]) -> None:
             if error_batch:
                 to_jsonl(io.err_path, error_batch)
 
-            print(f"  - 완료: {io.input_path} -> results:{io.out_path}, errs:{io.err_path}")
+            print(
+                f"  - 완료: {io.input_path} -> results:{io.out_path}, errs:{io.err_path}"
+            )
 
     print(f"[{case_name}] 종료\n")
 
