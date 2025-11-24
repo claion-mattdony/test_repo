@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Qdrant /retrieve API Tester</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
+          sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        background: #f7f1ea;
+        color: #2f2a25;
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 32px 16px 64px;
+      }
+      h1 {
+        margin-bottom: 0.5rem;
+        font-size: 1.8rem;
+        color: #a0532b;
+      }
+      p.lead {
+        color: #7a6a5e;
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+      }
+      form {
+        display: grid;
+        gap: 16px;
+        background: #fff8f2;
+        padding: 24px;
+        border-radius: 16px;
+        border: 1px solid #e6d4c6;
+        box-shadow: 0 8px 24px rgba(214, 188, 167, 0.35);
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 0.95rem;
+        color: #4a3d34;
+      }
+      input,
+      select,
+      textarea {
+        background: #fffefd;
+        color: #2f2a25;
+        border: 1px solid #dec8b7;
+        border-radius: 10px;
+        padding: 9px 12px;
+        font-size: 0.95rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #f39c6b;
+        box-shadow: 0 0 0 2px rgba(243, 156, 107, 0.25);
+      }
+      textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+      .inline {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .inline label {
+        flex: 1;
+        min-width: 220px;
+      }
+      .section-title {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #a0532b;
+      }
+      .group {
+        border: 1px solid #ead8c8;
+        border-radius: 14px;
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        background: #fffdf9;
+      }
+      .cards-section {
+        border: 1px solid #ead8c8;
+        border-radius: 18px;
+        padding: 22px;
+        background: #fff9f3;
+        margin-top: 32px;
+        display: grid;
+        gap: 12px;
+        box-shadow: 0 12px 32px rgba(191, 155, 126, 0.25);
+      }
+      .cards-section__controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-end;
+      }
+      .cards-section__controls label {
+        min-width: 200px;
+        font-weight: 600;
+        color: #7a5a47;
+      }
+      details.accordion {
+        border: 1px solid #ead0c0;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #fff4ec;
+        box-shadow: 0 6px 18px rgba(188, 147, 120, 0.2);
+      }
+      details.accordion + details.accordion,
+      details.accordion + .cards-section,
+      .cards-section + details.accordion {
+        margin-top: 16px;
+      }
+      details.accordion summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 16px;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #a0532b;
+      }
+      details.accordion summary::after {
+        content: "열기";
+        font-size: 0.85rem;
+        color: #c07a52;
+      }
+      details.accordion[open] summary::after {
+        content: "닫기";
+      }
+      details.accordion summary::-webkit-details-marker {
+        display: none;
+      }
+      .accordion__body {
+        padding: 0 16px 16px;
+        display: grid;
+        gap: 16px;
+      }
+      .chip-button {
+        background: #f39c6b;
+        border: none;
+        color: #fff;
+        padding: 10px 18px;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease,
+          opacity 0.15s ease;
+        box-shadow: 0 10px 18px rgba(243, 156, 107, 0.35);
+      }
+      .chip-button.secondary {
+        background: #d6c3b5;
+        color: #4a3d34;
+        box-shadow: none;
+      }
+      .chip-button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .chip-button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 22px rgba(243, 156, 107, 0.5);
+      }
+      .danger {
+        background: #d46f58;
+        box-shadow: 0 10px 18px rgba(212, 111, 88, 0.35);
+      }
+      .list-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .stack-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .stack-row input,
+      .stack-row textarea,
+      .stack-row select {
+        flex: 1;
+      }
+      pre {
+        background: #f3ebe3;
+        border-radius: 14px;
+        padding: 16px;
+        border: 1px solid #e2d2c4;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        color: #3d332b;
+      }
+      .muted {
+        color: #8a7a6c;
+        font-size: 0.9rem;
+      }
+      .results-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-top: 12px;
+      }
+      .result-group {
+        border: 1px solid #edd7c9;
+        border-radius: 16px;
+        padding: 16px;
+        background: #fffdf8;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+      }
+      .result-group__header {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .result-group__header .query-label {
+        font-size: 0.78rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #b58c74;
+      }
+      .result-group__header .query-text {
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      .doc-card {
+        border: 1px solid #f0ded0;
+        border-radius: 14px;
+        padding: 16px;
+        background: #ffffff;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        box-shadow: 0 8px 18px rgba(200, 156, 124, 0.18);
+      }
+      .doc-card__header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .doc-card__title {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        background: #fde7da;
+        color: #b45b33;
+        border-radius: 999px;
+        padding: 2px 12px;
+      }
+      .doc-card__id {
+        font-weight: 600;
+        word-break: break-all;
+        color: #4a3d34;
+      }
+      .doc-card__score {
+        font-size: 0.9rem;
+        color: #b45b33;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .meta-list {
+        display: grid;
+        grid-template-columns: minmax(120px, 160px) 1fr;
+        gap: 6px 12px;
+        margin: 0;
+      }
+      .meta-list dt {
+        color: #a17e67;
+        font-size: 0.85rem;
+      }
+      .meta-list dd {
+        margin: 0;
+        font-size: 0.92rem;
+        word-break: break-word;
+        color: #3f332b;
+      }
+      .service-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        border-radius: 999px;
+        border: 1px solid #f2d5c4;
+        padding: 3px 12px;
+        font-size: 0.78rem;
+        background: #fff4ed;
+        color: #a0532b;
+      }
+      .text-panel {
+        border: 1px solid #f0dbc9;
+        border-radius: 12px;
+        padding: 12px;
+        background: #fffaf5;
+      }
+      .text-panel + .text-panel {
+        margin-top: 10px;
+      }
+      .text-panel__header {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .text-panel__header h4 {
+        margin: 0;
+        font-size: 1rem;
+        color: #b45b33;
+      }
+      .text-panel__controls {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .pill-button {
+        border: 1px solid #eac9b3;
+        background: transparent;
+        color: #b45b33;
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease,
+          border-color 0.15s ease;
+      }
+      .pill-button.small {
+        font-size: 0.75rem;
+        padding: 4px 10px;
+      }
+      .pill-button.secondary {
+        background: #fbe7da;
+      }
+      .pill-button.active {
+        background: #f7c7a4;
+        border-color: #f7c7a4;
+        color: #4a3d34;
+      }
+      .pill-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .text-panel__body {
+        border: 1px solid #f1e0d2;
+        border-radius: 10px;
+        min-height: 80px;
+        background: #fffefc;
+      }
+      .text-panel__content {
+        margin: 0;
+        padding: 10px;
+        font-size: 0.95rem;
+        max-height: 320px;
+        overflow-y: auto;
+        color: #3d2f28;
+      }
+      .text-panel__content pre {
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+      }
+      .text-panel__content.is-hidden {
+        display: none;
+      }
+      a.file-link {
+        color: #c45a58;
+        text-decoration: none;
+        word-break: break-all;
+      }
+      a.file-link:hover {
+        text-decoration: underline;
+      }
+      #status {
+        min-height: 1.2em;
+        font-size: 0.9rem;
+        color: #8a7a6c;
+      }
+      @media (max-width: 640px) {
+        form {
+          padding: 16px;
+        }
+        .stack-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>/retrieve 라우터 테스트</h1>
+      <p class="lead">
+        Qdrant 검색 API에 보낼 JSON 페이로드를 손쉽게 조정해 보고, 응답을
+        확인하세요.
+      </p>
+      <form id="retrieveForm">
+        <details class="accordion options-accordion">
+          <summary>추가 옵션</summary>
+          <div class="accordion__body">
+            <label>
+              API URL
+              <input
+                name="endpoint"
+                type="url"
+                value="http://99.1.82.184:28080/api/v1/qdrant/retrieve"
+                required
+              />
+            </label>
+
+            <div class="group">
+              <p class="section-title">기본 설정</p>
+              <div class="inline">
+                <label>
+                  Collection Name
+                  <input
+                    name="collection_name"
+                    placeholder="default: settings.COLLECTION_NAME"
+                  />
+                </label>
+                <label>
+                  Retrieve Type
+                  <select name="retrieve_type">
+                    <option value="">(서버 기본값)</option>
+                    <option value="semantic">semantic</option>
+                    <option value="lexical">lexical</option>
+                    <option value="hybrid" selected>hybrid</option>
+                  </select>
+                </label>
+              </div>
+              <div class="inline">
+                <label>
+                  Dense Limit
+                  <input
+                    name="dense_limit"
+                    type="number"
+                    min="1"
+                    max="500"
+                    placeholder="ex) 100"
+                  />
+                </label>
+                <label>
+                  Sparse Limit
+                  <input
+                    name="sparse_limit"
+                    type="number"
+                    min="1"
+                    max="500"
+                    placeholder="ex) 100"
+                  />
+                </label>
+                <label>
+                  Final Limit
+                  <input
+                    name="final_limit"
+                    type="number"
+                    min="1"
+                    max="50"
+                    placeholder="ex) 5"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div class="group">
+              <p class="section-title">Dense Embedding</p>
+              <div class="inline">
+                <label>
+                  Type
+                  <select name="dense_type">
+                    <option value="">(default)</option>
+                    <option value="bge">bge</option>
+                    <option value="jina">jina</option>
+                  </select>
+                </label>
+                <label>
+                  Name
+                  <input
+                    name="dense_name"
+                    placeholder="예: jina_v3_dense_vector"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div class="group">
+              <p class="section-title">Sparse Embedding</p>
+              <div class="inline">
+                <label>
+                  Type
+                  <select name="sparse_type">
+                    <option value="">(default)</option>
+                    <option value="bm25">bm25</option>
+                  </select>
+                </label>
+                <label>
+                  Name
+                  <input name="sparse_name" placeholder="예: kiwi_bm25" />
+                </label>
+              </div>
+            </div>
+
+            <div class="group">
+              <p class="section-title">Reranking</p>
+              <div class="inline">
+                <label class="inline-choice">
+                  <input type="checkbox" name="rerank_active" checked />
+                  is_active
+                </label>
+                <label>
+                  target
+                  <select name="rerank_target">
+                    <option value="">(default)</option>
+                    <option value="text" selected>text</option>
+                    <option value="parent_text">parent_text</option>
+                  </select>
+                </label>
+                <label class="inline-choice">
+                  <input type="checkbox" name="rerank_summary" />
+                  include_summary
+                </label>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="section-title">필터 (선택)</div>
+              <div id="filtersContainer" class="list-stack"></div>
+              <button
+                type="button"
+                class="chip-button secondary"
+                id="addFilterButton"
+              >
+                + 필터 추가
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <div class="group">
+          <div class="section-title">질의 목록</div>
+          <div id="queriesContainer" class="list-stack"></div>
+          <button
+            type="button"
+            class="chip-button secondary"
+            id="addQueryButton"
+          >
+            + 질의 추가
+          </button>
+        </div>
+
+        <button type="submit" class="chip-button">/retrieve 호출</button>
+        <div id="status"></div>
+      </form>
+
+      <section class="cards-section">
+        <h2 class="section-title" style="margin-bottom: 0">Response Cards</h2>
+        <div class="cards-section__controls">
+          <label>
+            Score 최소값
+            <input
+              id="scoreFilterInput"
+              type="number"
+              step="0.0001"
+              placeholder="예) 0.7"
+              min="0"
+              max="1"
+              value="0.7"
+            />
+          </label>
+        </div>
+        <div id="responseCards" class="results-grid">
+          <p class="muted">API 호출 후 검색 결과 카드가 여기에 표시됩니다.</p>
+        </div>
+      </section>
+
+      <details class="accordion">
+        <summary>Request Preview</summary>
+        <div class="accordion__body">
+          <pre id="requestPreview">{}</pre>
+        </div>
+      </details>
+
+      <details class="accordion">
+        <summary>Raw Response</summary>
+        <div class="accordion__body">
+          <pre id="responseOutput">결과가 여기에 표시됩니다.</pre>
+        </div>
+      </details>
+    </main>
+
+    <script>
+      const FILE_DOWNLOAD_BASE_URL = "https://busanai.busan.go.kr/download/";
+      const queriesContainer = document.getElementById("queriesContainer");
+      const filtersContainer = document.getElementById("filtersContainer");
+      const addQueryButton = document.getElementById("addQueryButton");
+      const addFilterButton = document.getElementById("addFilterButton");
+      const form = document.getElementById("retrieveForm");
+      const statusEl = document.getElementById("status");
+      const requestPreview = document.getElementById("requestPreview");
+      const responseOutput = document.getElementById("responseOutput");
+      const responseCards = document.getElementById("responseCards");
+      const scoreFilterInput = document.getElementById("scoreFilterInput");
+      let lastApiResponse = null;
+
+      function addQueryField(value = "") {
+        const row = document.createElement("div");
+        row.className = "stack-row";
+
+        const textarea = document.createElement("textarea");
+        textarea.placeholder = "예) 부산시 행정 조직도를 설명해줘";
+        textarea.value = value;
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.textContent = "삭제";
+        removeBtn.className = "chip-button danger";
+        removeBtn.addEventListener("click", () => {
+          queriesContainer.removeChild(row);
+          if (!queriesContainer.children.length) {
+            addQueryField();
+          }
+        });
+
+        row.append(textarea, removeBtn);
+        queriesContainer.appendChild(row);
+      }
+
+      function addFilterRow(initial = {}) {
+        const row = document.createElement("div");
+        row.className = "stack-row";
+
+        const keyInput = document.createElement("input");
+        keyInput.placeholder = "key (예: group)";
+        keyInput.value = initial.key ?? "";
+
+        const valuesInput = document.createElement("input");
+        valuesInput.placeholder = "values (쉼표 구분)";
+        valuesInput.value = initial.values?.join(", ") ?? "";
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.textContent = "삭제";
+        removeBtn.className = "chip-button danger";
+        removeBtn.addEventListener("click", () =>
+          filtersContainer.removeChild(row)
+        );
+
+        row.append(keyInput, valuesInput, removeBtn);
+        filtersContainer.appendChild(row);
+      }
+
+      addQueryButton.addEventListener("click", () => addQueryField());
+      addFilterButton.addEventListener("click", () => addFilterRow());
+      addQueryField();
+
+      function parseNumber(value) {
+        if (value === "" || value === null || value === undefined)
+          return undefined;
+        const num = Number(value);
+        return Number.isFinite(num) ? num : undefined;
+      }
+
+      function buildPayload(formData) {
+        const payload = {
+          queries: Array.from(queriesContainer.querySelectorAll("textarea"))
+            .map((el) => el.value.trim())
+            .filter(Boolean),
+        };
+
+        if (!payload.queries.length) {
+          throw new Error("최소 1개의 질의를 입력하세요.");
+        }
+
+        const collectionName = formData.get("collection_name")?.trim();
+        if (collectionName) payload.collection_name = collectionName;
+
+        const retrieveType = formData.get("retrieve_type");
+        if (retrieveType) payload.retrieve_type = retrieveType;
+
+        const denseLimit = parseNumber(formData.get("dense_limit"));
+        if (denseLimit !== undefined) payload.dense_limit = denseLimit;
+
+        const sparseLimit = parseNumber(formData.get("sparse_limit"));
+        if (sparseLimit !== undefined) payload.sparse_limit = sparseLimit;
+
+        const finalLimit = parseNumber(formData.get("final_limit"));
+        if (finalLimit !== undefined) payload.final_limit = finalLimit;
+
+        const denseType = formData.get("dense_type");
+        const denseName = formData.get("dense_name")?.trim();
+        if (denseType || denseName) {
+          payload.dense_embedding = {
+            type: denseType || null,
+            name: denseName || null,
+          };
+        }
+
+        const sparseType = formData.get("sparse_type");
+        const sparseName = formData.get("sparse_name")?.trim();
+        if (sparseType || sparseName) {
+          payload.sparse_embedding = {
+            type: sparseType || null,
+            name: sparseName || null,
+          };
+        }
+
+        const rerankActive = formData.get("rerank_active") === "on";
+        const rerankTarget = formData.get("rerank_target");
+        const rerankSummary = formData.get("rerank_summary") === "on";
+        if (rerankActive || rerankTarget || rerankSummary) {
+          payload.reranking = {
+            is_active: rerankActive,
+            target: rerankTarget || null,
+            include_summary: rerankSummary,
+          };
+        }
+
+        const filters = Array.from(filtersContainer.children)
+          .map((row) => {
+            const [keyInput, valuesInput] = row.querySelectorAll("input");
+            const key = keyInput.value.trim();
+            const values = valuesInput.value
+              .split(",")
+              .map((value) => value.trim())
+              .filter(Boolean);
+            if (!key || !values.length) return null;
+            return { key, values };
+          })
+          .filter(Boolean);
+
+        if (filters.length) payload.filters = filters;
+
+        return payload;
+      }
+
+      function setStatus(message, isError = false) {
+        statusEl.textContent = message;
+        statusEl.style.color = isError ? "#f78c6c" : "#9da4b1";
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const formData = new FormData(form);
+        let payload;
+
+        try {
+          payload = buildPayload(formData);
+        } catch (err) {
+          setStatus(err.message, true);
+          return;
+        }
+
+        requestPreview.textContent = JSON.stringify(payload, null, 2);
+        const endpoint = formData.get("endpoint");
+        setStatus("요청 중...");
+
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const text = await response.text();
+          let parsed;
+          try {
+            parsed = JSON.parse(text);
+            responseOutput.textContent = JSON.stringify(parsed, null, 2);
+            lastApiResponse = parsed;
+            renderResponseCards();
+          } catch {
+            responseOutput.textContent = text || "(빈 응답)";
+            lastApiResponse = null;
+            renderResponseCards(
+              "JSON 응답이 아니어서 카드로 표시할 수 없습니다."
+            );
+          }
+
+          if (!response.ok) {
+            setStatus(`오류: ${response.status} ${response.statusText}`, true);
+          } else {
+            setStatus("완료");
+          }
+        } catch (error) {
+          setStatus(`요청 실패: ${error.message}`, true);
+          responseOutput.textContent = "네트워크 에러가 발생했습니다.";
+          lastApiResponse = null;
+          renderResponseCards("네트워크 에러로 결과를 불러오지 못했습니다.");
+        }
+      });
+
+      function getScoreThreshold() {
+        if (!scoreFilterInput) return null;
+        const value = parseFloat(scoreFilterInput.value);
+        return Number.isFinite(value) ? value : null;
+      }
+
+      function renderResponseCards(emptyMessage) {
+        if (!responseCards) return;
+        responseCards.innerHTML = "";
+
+        const apiResponse = lastApiResponse;
+        const results = apiResponse?.results;
+        if (!Array.isArray(results) || !results.length) {
+          const message = document.createElement("p");
+          message.className = "muted";
+          message.textContent =
+            emptyMessage ||
+            (apiResponse
+              ? "표시할 검색 결과가 없습니다."
+              : "API 호출 후 검색 결과 카드가 여기에 표시됩니다.");
+          responseCards.appendChild(message);
+          return;
+        }
+
+        results.forEach((result, idx) => {
+          const group = document.createElement("section");
+          group.className = "result-group";
+
+          const header = document.createElement("div");
+          header.className = "result-group__header";
+          const queryLabel = document.createElement("span");
+          queryLabel.className = "query-label";
+          queryLabel.textContent = `Query ${idx + 1}`;
+          const queryText = document.createElement("div");
+          queryText.className = "query-text";
+          queryText.textContent = result?.query || "(질의 없음)";
+          header.append(queryLabel, queryText);
+          group.appendChild(header);
+
+          const threshold = getScoreThreshold();
+          const documents = Array.isArray(result?.retrieved_documents)
+            ? result.retrieved_documents.filter(Boolean).filter((doc) => {
+                if (threshold === null) return true;
+                const scoreValue = parseFloat(doc?.score);
+                return Number.isFinite(scoreValue) && scoreValue >= threshold;
+              })
+            : [];
+
+          if (!documents.length) {
+            const empty = document.createElement("p");
+            empty.className = "muted";
+            empty.textContent = "검색 결과가 없습니다.";
+            group.appendChild(empty);
+          } else {
+            documents.forEach((doc, docIdx) => {
+              group.appendChild(createDocumentCard(doc, docIdx + 1));
+            });
+          }
+
+          responseCards.appendChild(group);
+        });
+      }
+
+      function createDocumentCard(doc, order) {
+        const payload = doc?.payload || {};
+        const card = document.createElement("article");
+        card.className = "doc-card";
+
+        const header = document.createElement("header");
+        header.className = "doc-card__header";
+        const title = document.createElement("div");
+        title.className = "doc-card__title";
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = `#${order}`;
+        const idEl = document.createElement("span");
+        idEl.className = "doc-card__id";
+        idEl.textContent = doc?.id || "(id 없음)";
+        title.append(badge, idEl);
+
+        const scoreEl = document.createElement("span");
+        scoreEl.className = "doc-card__score";
+        scoreEl.textContent = `score ${formatScore(doc?.score)}`;
+        header.append(title, scoreEl);
+        card.appendChild(header);
+
+        const metaList = document.createElement("dl");
+        metaList.className = "meta-list";
+        appendMeta(metaList, "파일", createFileLink(payload.file));
+        appendMeta(metaList, "페이지", payload.page_num ?? "-");
+        appendMeta(metaList, "서비스", createServiceChips(payload));
+        appendMeta(metaList, "NER", formatBoolean(payload.ner));
+        appendMeta(metaList, "요약", payload.summary || "(요약 없음)");
+        appendMeta(
+          metaList,
+          "child_chunk_length",
+          valueOrDash(payload.child_chunk_length)
+        );
+        appendMeta(
+          metaList,
+          "parent_chunk_length",
+          valueOrDash(payload.parent_chunk_length)
+        );
+        card.appendChild(metaList);
+
+        card.appendChild(createTextPanel("Parent Text", payload.parent_text));
+        card.appendChild(createTextPanel("Text", payload.text));
+
+        return card;
+      }
+
+      function appendMeta(list, label, value) {
+        const dt = document.createElement("dt");
+        dt.textContent = label;
+        const dd = document.createElement("dd");
+        if (value instanceof Node) {
+          dd.appendChild(value);
+        } else {
+          dd.textContent = value ?? "-";
+        }
+        list.append(dt, dd);
+      }
+
+      function createFileLink(filePath) {
+        if (!filePath) return document.createTextNode("-");
+        const encodedPath = encodeURIComponent(filePath);
+        const link = document.createElement("a");
+        link.href = `${FILE_DOWNLOAD_BASE_URL}${encodedPath}`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.className = "file-link";
+        link.textContent = filePath.split("/").pop() || filePath;
+        link.title = filePath;
+        return link;
+      }
+
+      function createServiceChips(payload) {
+        const services =
+          normalizeList(payload?.services) ||
+          normalizeList(payload?.service) ||
+          [];
+        if (!services.length) return document.createTextNode("-");
+        const wrapper = document.createElement("div");
+        wrapper.className = "service-chips";
+        services.forEach((service) => {
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.textContent = service;
+          wrapper.appendChild(chip);
+        });
+        return wrapper;
+      }
+
+      function normalizeList(value) {
+        if (!value) return null;
+        if (Array.isArray(value)) {
+          return value.map((item) => `${item}`.trim()).filter(Boolean);
+        }
+        if (typeof value === "string") {
+          return value
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean);
+        }
+        return null;
+      }
+
+      function formatBoolean(value) {
+        if (value === null || value === undefined) return "-";
+        return value ? "true" : "false";
+      }
+
+      function valueOrDash(value) {
+        return value === null || value === undefined ? "-" : value;
+      }
+
+      function formatScore(score) {
+        if (typeof score === "number") {
+          return score.toFixed(4);
+        }
+        return score ?? "-";
+      }
+
+      function createTextPanel(title, content) {
+        const section = document.createElement("section");
+        section.className = "text-panel";
+
+        const header = document.createElement("div");
+        header.className = "text-panel__header";
+        const heading = document.createElement("h4");
+        heading.textContent = title;
+
+        const controls = document.createElement("div");
+        controls.className = "text-panel__controls";
+
+        const htmlBtn = createToggleButton("HTML 보기", true);
+        const rawBtn = createToggleButton("원본 보기");
+        const copyBtn = createToggleButton("클립보드 복사");
+
+        controls.append(htmlBtn, rawBtn, copyBtn);
+        header.append(heading, controls);
+
+        const body = document.createElement("div");
+        body.className = "text-panel__body";
+
+        const htmlView = document.createElement("div");
+        htmlView.className = "text-panel__content";
+        htmlView.innerHTML = content || "<em>내용이 없습니다.</em>";
+
+        const rawView = document.createElement("pre");
+        rawView.className = "text-panel__content is-hidden";
+        rawView.textContent = content || "";
+
+        body.append(htmlView, rawView);
+
+        htmlBtn.addEventListener("click", () => {
+          htmlBtn.classList.add("active");
+          rawBtn.classList.remove("active");
+          htmlView.classList.remove("is-hidden");
+          rawView.classList.add("is-hidden");
+        });
+
+        rawBtn.addEventListener("click", () => {
+          rawBtn.classList.add("active");
+          htmlBtn.classList.remove("active");
+          rawView.classList.remove("is-hidden");
+          htmlView.classList.add("is-hidden");
+        });
+
+        copyBtn.addEventListener("click", async () => {
+          copyBtn.disabled = true;
+          const original = copyBtn.textContent;
+          try {
+            await copyToClipboard(content || "");
+            copyBtn.textContent = "복사 완료";
+          } catch (error) {
+            console.error("clipboard error", error);
+            copyBtn.textContent = "복사 실패";
+          }
+          setTimeout(() => {
+            copyBtn.disabled = false;
+            copyBtn.textContent = original;
+          }, 1200);
+        });
+
+        section.append(header, body);
+        return section;
+      }
+
+      function createToggleButton(label, isActive = false) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `pill-button small${isActive ? " active" : ""}`;
+        button.textContent = label;
+        return button;
+      }
+
+      async function copyToClipboard(text) {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+
+      scoreFilterInput?.addEventListener("input", () => {
+        if (!lastApiResponse) return;
+        renderResponseCards();
+      });
+
+      renderResponseCards();
+    </script>
+  </body>
+</html>
