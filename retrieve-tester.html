@@ -429,7 +429,7 @@
               <input
                 name="endpoint"
                 type="url"
-                value="http://99.1.82.184:28080/api/v1/qdrant/retrieve"
+                value="http://99.1.82.169:28080/api/v1/qdrant/retrieve"
                 required
               />
             </label>
@@ -791,15 +791,14 @@
           let parsed;
           try {
             parsed = JSON.parse(text);
+            console.log(parsed);
             responseOutput.textContent = JSON.stringify(parsed, null, 2);
             lastApiResponse = parsed;
             renderResponseCards();
           } catch {
             responseOutput.textContent = text || "(빈 응답)";
             lastApiResponse = null;
-            renderResponseCards(
-              "JSON 응답이 아니어서 카드로 표시할 수 없습니다."
-            );
+            renderResponseCards("JSON 응답이 아니어서 카드로 표시할 수 없습니다.");
           }
 
           if (!response.ok) {
@@ -856,11 +855,13 @@
 
           const threshold = getScoreThreshold();
           const documents = Array.isArray(result?.retrieved_documents)
-            ? result.retrieved_documents.filter(Boolean).filter((doc) => {
-                if (threshold === null) return true;
-                const scoreValue = parseFloat(doc?.score);
-                return Number.isFinite(scoreValue) && scoreValue >= threshold;
-              })
+            ? result.retrieved_documents
+                .filter(Boolean)
+                .filter((doc) => {
+                  if (threshold === null) return true;
+                  const scoreValue = parseFloat(doc?.score);
+                  return Number.isFinite(scoreValue) && scoreValue >= threshold;
+                })
             : [];
 
           if (!documents.length) {
@@ -903,7 +904,7 @@
 
         const metaList = document.createElement("dl");
         metaList.className = "meta-list";
-        appendMeta(metaList, "파일", createFileLink(payload.file));
+        appendMeta(metaList, "파일", createFileLink(payload.file_path));
         appendMeta(metaList, "페이지", payload.page_num ?? "-");
         appendMeta(metaList, "서비스", createServiceChips(payload));
         appendMeta(metaList, "NER", formatBoolean(payload.ner));
@@ -940,14 +941,22 @@
 
       function createFileLink(filePath) {
         if (!filePath) return document.createTextNode("-");
+
+        const parts = filePath.split('/');
+        const filtered = parts.filter(Boolean);
+        const rest = filtered.slice(2);
+        filePath = rest.join('/');
+
         const encodedPath = encodeURIComponent(filePath);
         const link = document.createElement("a");
+        const filename = filePath.split("/").pop() || filePath;
+
         link.href = `${FILE_DOWNLOAD_BASE_URL}${encodedPath}`;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.className = "file-link";
-        link.textContent = filePath.split("/").pop() || filePath;
-        link.title = filePath;
+        link.textContent = filename;
+        link.title = filename;
         return link;
       }
 
