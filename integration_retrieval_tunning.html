@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAG Search & Tuning Console</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --accent: #0f766e;
+        --accent-strong: #115e59;
+        --bg: #f8fafc;
+        --panel: #ffffff;
+        --border: #d9e2ec;
+        --text: #0f172a;
+        --muted: #475569;
+        --code-bg: #1e293b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+        background: radial-gradient(circle at 20% 20%, #eef2ff 0, #eef2ff 25%, transparent 25%), var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        padding: 32px 12px 48px;
+      }
+      .page { max-width: 1100px; margin: 0 auto; display: grid; gap: 18px; }
+      h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: -0.02em; }
+      p.lead { margin: 0 0 12px; color: var(--muted); }
+      
+      /* --- Common UI Components --- */
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+      }
+      .card h2 { margin: 0 0 10px; font-size: 19px; }
+      
+      /* Form Elements */
+      form { display: grid; gap: 12px; }
+      label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; color: var(--muted); font-size: 14px; }
+      input, textarea, button, select { font: inherit; }
+      input[type="text"], input[type="number"], textarea, select {
+        padding: 9px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #f8fafc;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      input:focus, textarea:focus, select:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+        background: #fff;
+      }
+      input:disabled, select:disabled { background: #e2e8f0; cursor: not-allowed; color: #94a3b8; }
+      textarea { min-height: 80px; resize: vertical; }
+
+      /* Tabs */
+      .tabs { display: flex; gap: 8px; margin-bottom: 4px; }
+      .tab-btn { background: transparent; border: 1px solid transparent; color: var(--muted); padding: 8px 16px; font-weight: 600; cursor: pointer; border-radius: 8px; }
+      .tab-btn:hover { color: var(--text); background: rgba(0,0,0,0.03); }
+      .tab-btn.active { background: #fff; color: var(--accent-strong); border-color: var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+      .tab-content { display: none; }
+      .tab-content.active { display: grid; gap: 18px; }
+
+      /* Grid System */
+      .row { display: grid; gap: 10px; }
+      .row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .row.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .row.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .row.required { grid-template-columns: 1fr; }
+      @media (min-width: 720px) {
+        .row.required { grid-template-columns: 2fr 1fr; }
+        .row.optional { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .row.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      }
+
+      /* Buttons & Status */
+      button {
+        background: var(--accent); color: #fff; border: none; border-radius: 9px;
+        padding: 12px 16px; font-weight: 700; cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      button:hover { background: var(--accent-strong); box-shadow: 0 6px 18px rgba(15, 118, 110, 0.22); }
+      button:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; background: #cbd5e1; }
+      
+      .status { font-size: 14px; color: var(--muted); margin-top: 8px; }
+      .error { color: #b91c1c; font-weight: 700; }
+      .success { color: #0f766e; font-weight: 700; }
+
+      /* Details/Summary */
+      details { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; background: #f8fafc; }
+      details summary { font-weight: 700; cursor: pointer; color: var(--accent-strong); font-size: 14px; display: flex; align-items: center; gap: 6px; }
+
+      /* --- TAB 1 SPECIFIC STYLES --- */
+      .param-group { border: 1px solid var(--border); border-radius: 8px; background: #fff; overflow: hidden; }
+      .param-group-header { background: #f1f5f9; padding: 8px 12px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border); }
+      .param-group-body { padding: 12px; display: grid; gap: 10px; }
+      .param-group-body.disabled { opacity: 0.5; pointer-events: none; }
+      .filter-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+      .filter-row input { flex: 1; }
+      .btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+      .btn-danger { background: #ef4444; } .btn-danger:hover { background: #dc2626; }
+      .btn-secondary { background: #64748b; } .btn-secondary:hover { background: #475569; }
+      
+      .expansion-result { background: #ecfdf5; border: 1px solid #d1fae5; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+      .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+      .tag { background: #fff; padding: 4px 8px; border-radius: 4px; border: 1px solid #a7f3d0; font-size: 12px; font-weight: 600; color: #047857; }
+      .code-display { background: var(--code-bg); color: #e2e8f0; padding: 12px; border-radius: 8px; overflow: auto; font-family: monospace; font-size: 12px; white-space: pre-wrap; margin: 8px 0; border: 1px solid #334155; }
+      .latency-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 12px; }
+      .latency-item { background: #fff; border: 1px solid var(--border); padding: 8px; border-radius: 6px; text-align: center; }
+      .latency-item .lbl { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+      .latency-item .val { font-weight: 700; color: var(--accent); font-size: 14px; }
+
+      /* --- TAB 2 SPECIFIC STYLES (From User Code) --- */
+      .points { display: grid; gap: 10px; margin-top: 8px; }
+      .point { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; background: #f9fbff; }
+      .point header { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+      .pill { padding: 4px 8px; border-radius: 999px; background: #e2f3f0; color: var(--accent-strong); font-weight: 700; font-size: 12px; }
+      .payload { font-family: ui-monospace, SFMono-Regular, monospace; background: #0f172a; color: #e2e8f0; padding: 8px 10px; border-radius: 8px; overflow: auto; font-size: 13px; line-height: 1.4; white-space: pre-wrap; }
+      .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+      .meta-grid { display: flex; flex-direction: column; gap: 8px; }
+      @media(min-width: 600px) { .meta-grid { flex-direction: row; flex-wrap: wrap; } }
+      .meta-item { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: #fff; flex: 1; min-width: 140px; }
+      .meta-item .meta-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+      .meta-item .meta-value { font-weight: 700; color: var(--text); word-break: break-word; }
+      .text-block { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: #fff; display: grid; gap: 8px; }
+      .text-block__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+      .text-block__title { font-weight: 700; color: var(--text); }
+      .view-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+      .view-btn { border: 1px solid var(--border); background: #f8fafc; color: var(--text); padding: 6px 10px; border-radius: 7px; cursor: pointer; font-weight: 600; transition: all 0.15s ease; }
+      .view-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+      .view-btn.is-active { background: #e2f3f0; border-color: var(--accent); color: var(--accent-strong); }
+      .text-block__body { border: 1px dashed var(--border); border-radius: 8px; padding: 10px; background: #f8fafc; min-height: 60px; white-space: pre-wrap; word-break: break-word; }
+      .payload-details { border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; background: #fff; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <h1>RAG Search Console</h1>
+        <p class="lead">API 파이프라인 테스트 및 Qdrant 데이터 튜닝</p>
+      </header>
+
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="tab-search">🔍 검색 시나리오 테스트</button>
+        <button class="tab-btn" data-tab="tab-tuning">🛠️ Qdrant 데이터 튜닝</button>
+      </nav>
+
+      <div id="tab-search" class="tab-content active">
+        <section class="card">
+          <h2>🔍 사용자 질의 확장 및 검색</h2>
+          <form id="scenarioForm">
+            <label>
+              사용자 질의 (User Query)
+              <textarea id="userQuery" placeholder="질문을 입력해주세요. 예: 중대재해 처벌법 관련 자료 찾아줘"></textarea>
+            </label>
+            <div class="row two">
+              <label>
+                질의확장 API URL
+                <input type="text" id="apiExpand" value="http://99.1.82.168:8080/test/api/llm-studio/query-expand">
+              </label>
+              <label>
+                검색 API URL
+                <input type="text" id="apiRetrieve" value="http://99.1.82.169:8080/api/v1/qdrant/retrieve">
+              </label>
+            </div>
+
+            <details>
+                <summary>검색 상세조건 설정 (Parameter Tuning)</summary>
+                <div style="margin-top: 12px; display: grid; gap: 12px;">
+                    <div class="row two">
+                        <label>Collection Name <input type="text" id="p_collection_name" value="BusanCity"></label>
+                        <label>Retrieve Type
+                            <select id="p_retrieve_type">
+                                <option value="hybrid" selected>hybrid</option>
+                                <option value="semantic">semantic</option>
+                                <option value="lexical">lexical</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div class="row three">
+                        <label>Dense Limit <input type="number" id="p_dense_limit" value="100"></label>
+                        <label>Sparse Limit <input type="number" id="p_sparse_limit" value="100"></label>
+                        <label>Final Limit <input type="number" id="p_final_limit" value="5"></label>
+                    </div>
+
+                    <div class="param-group">
+                        <div class="param-group-header">
+                            <span style="font-weight:700; font-size:14px; flex:1">필터 설정 (Filters)</span>
+                            <button type="button" class="btn-sm btn-secondary" onclick="addFilterRowTab1()">+ 추가</button>
+                        </div>
+                        <div class="param-group-body" id="filterContainerTab1"></div>
+                    </div>
+
+                    <div class="param-group">
+                         <div class="param-group-header">
+                            <input type="checkbox" id="chk_reranking" checked onchange="toggleGroup(this, 'grp_reranking')">
+                            <label for="chk_reranking" style="margin:0; font-weight:700; cursor:pointer">Reranking 설정</label>
+                        </div>
+                        <div class="param-group-body" id="grp_reranking">
+                            <label>Target <input type="text" id="p_reranking_target" value="text"></label>
+                        </div>
+                    </div>
+
+                    <div class="param-group">
+                         <div class="param-group-header">
+                            <input type="checkbox" id="chk_penalty" checked onchange="toggleGroup(this, 'grp_penalty')">
+                            <label for="chk_penalty" style="margin:0; font-weight:700; cursor:pointer">Penalty 설정</label>
+                        </div>
+                        <div class="param-group-body" id="grp_penalty">
+                            <div class="row four">
+                                <label>Criteria <input type="number" id="p_pen_criteria" value="20"></label>
+                                <label>Insensitivity <input type="number" id="p_pen_insensitivity" value="5"></label>
+                                <label>Min Length <input type="number" id="p_pen_min_length" value="10"></label>
+                                <label>Noise Weight <input type="number" id="p_pen_noise_weight" value="0"></label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="param-group">
+                         <div class="param-group-header">
+                            <input type="checkbox" id="chk_nextpoint" onchange="toggleGroup(this, 'grp_nextpoint')">
+                            <label for="chk_nextpoint" style="margin:0; font-weight:700; cursor:pointer">Add Next Point 설정</label>
+                        </div>
+                        <div class="param-group-body disabled" id="grp_nextpoint">
+                            <label>Added Chunk Max Size <input type="number" id="p_added_chunk_max_size" value="2000" disabled></label>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <button type="submit">검색 실행 (Run Pipeline)</button>
+            <div id="scenarioStatus" class="status"></div>
+          </form>
+        </section>
+
+        <div id="scenarioResultContainer" style="display:none;">
+          <section class="card">
+             <h2>STEP 1: 질의 확장 (Query Expansion)</h2>
+             <details>
+                 <summary>cURL Request 보기</summary>
+                 <pre id="curlStep1" class="code-display"></pre>
+             </details>
+             <div id="expansionDisplay" style="margin-top:10px"></div>
+          </section>
+
+          <section class="card">
+            <h2>STEP 2: 검색 결과 (Retrieval)</h2>
+            <details>
+                 <summary>cURL Request 보기</summary>
+                 <pre id="curlStep2" class="code-display"></pre>
+            </details>
+            <div id="latencyDisplay" class="latency-grid" style="margin-top:10px"></div>
+            <div id="searchResultPoints" class="points"></div>
+          </section>
+        </div>
+      </div>
+
+      <div id="tab-tuning" class="tab-content">
+        <section class="card">
+            <h2>STEP1. 파일명 기반 검색 설정</h2>
+            <form id="searchForm">
+              <div class="row two">
+                <label>
+                  ❗API Base URL
+                  <input id="apiBase" type="text" value="http://99.1.82.169:8080/api/v1/qdrant" required />
+                </label>
+                <label>
+                  ❗Collection Name
+                  <input id="collectionName" type="text" value="BusanCity" required />
+                </label>
+              </div>
+              <div class="row required">
+                <label>
+                  ❗File Name
+                  <input id="fileName" type="text" placeholder="파일명을 정확하게 입력해주세요" required />
+                </label>
+                <label>
+                  ❗Limit
+                  <input id="limit" type="number" min="0" value="10" required />
+                  <span class="muted" style="color: gray; font-style: oblique; text-align: right"
+                    >* 0 입력 시 검색 조건에 맞는 모든 포인트 조회</span
+                  >
+                </label>
+              </div>
+              <div class="row optional">
+                <label>
+                  Page Number (optional)
+                  <input id="pageNum" type="number" min="1" placeholder="예: 3" />
+                </label>
+                <label>
+                  Parent Index (optional)
+                  <input id="parentIdx" type="number" min="0" placeholder="예: 1" />
+                </label>
+                <label>
+                  Offset (optional)
+                  <input id="offset" type="text" placeholder="부분 조회 시작 point_id" />
+                </label>
+              </div>
+              <button type="submit">포인트 검색</button>
+              <div id="searchStatus" class="status"></div>
+            </form>
+          </section>
+    
+          <section class="card">
+            <div class="actions" style="justify-content: space-between">
+              <h2 style="margin: 0">검색 결과</h2>
+              <div class="muted" id="selectionHint">선택된 포인트: 0</div>
+            </div>
+            <div class="actions" style="margin-top: 8px">
+              <button type="button" id="selectAllBtn">전체 선택</button>
+              <button type="button" id="clearSelectionBtn">선택 해제</button>
+            </div>
+            <div id="pointsContainer" class="points"></div>
+          </section>
+    
+          <section class="card">
+            <h2>🛠️ STEP2. 포인트 튜닝</h2>
+            <form id="tuneForm">
+              <label>
+                Boost Keywords
+                <textarea id="boostKeywords" placeholder="예: 부산시 스마트팩토리 지원"></textarea>
+              </label>
+              <button type="submit" id="tuneBtn" disabled>선택 포인트 업데이트</button>
+              <div id="tuneStatus" class="status"></div>
+            </form>
+          </section>
+      </div>
+    </div>
+
+    <script>
+      // ==========================================
+      // Global Utilities
+      // ==========================================
+      const FILE_DOWNLOAD_BASE_URL = "https://busanai.busan.go.kr/download/";
+
+      function escapeHTML(str) {
+        if (typeof str !== "string") str = String(str ?? "");
+        return str.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+      }
+      
+      function createFileLink(filePath, pageNum) {
+        if (!filePath) return "-";
+        const parts = filePath.split("/");
+        const filtered = parts.filter(Boolean);
+        const rest = filtered.slice(2);
+        const relativePath = rest.join("/");
+        const filename = parts.pop() || filePath;
+        const encodedPath = encodeURIComponent(relativePath);
+        const hash = pageNum ? `#page=${pageNum}` : '';
+        return `<a href="${FILE_DOWNLOAD_BASE_URL}${encodedPath}${hash}" target="_blank" rel="noopener noreferrer" title="${filename}">${filename}</a>`;
+      }
+
+      async function copyText(text) {
+        try {
+            await navigator.clipboard.writeText(text || "");
+        } catch(e) { 
+             // Fallback
+             const textarea = document.createElement("textarea");
+             textarea.value = text || "";
+             document.body.appendChild(textarea);
+             textarea.select();
+             document.execCommand("copy");
+             document.body.removeChild(textarea);
+        }
+      }
+
+      function generateCurl(url, body) {
+          return `curl -X 'POST' \\
+  '${url}' \\
+  -H 'accept: application/json' \\
+  -H 'Content-Type: application/json' \\
+  -d '${JSON.stringify(body, null, 2)}'`;
+      }
+
+      // ==========================================
+      // Tab Switching
+      // ==========================================
+      const tabBtns = document.querySelectorAll('.tab-btn');
+      const tabContents = document.querySelectorAll('.tab-content');
+      tabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          tabBtns.forEach(b => b.classList.remove('active'));
+          tabContents.forEach(c => c.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(btn.dataset.tab).classList.add('active');
+        });
+      });
+
+      // ==========================================
+      // TAB 1: Search Scenario Logic (Perfect Version)
+      // ==========================================
+      
+      // Toggle Group Utility
+      window.toggleGroup = function(chk, targetId) {
+          const target = document.getElementById(targetId);
+          const inputs = target.querySelectorAll('input, select');
+          if(chk.checked) {
+              target.classList.remove('disabled');
+              inputs.forEach(el => el.disabled = false);
+          } else {
+              target.classList.add('disabled');
+              inputs.forEach(el => el.disabled = true);
+          }
+      };
+
+      // Tab 1 Filters
+      const filterContainerTab1 = document.getElementById('filterContainerTab1');
+      window.addFilterRowTab1 = function(key="", values="") {
+        const div = document.createElement('div');
+        div.className = 'filter-row';
+        div.innerHTML = `
+            <input type="text" placeholder="Key (e.g. group)" class="filter-key" value="${key}">
+            <input type="text" placeholder="Values (쉼표 구분)" class="filter-values" value="${values}">
+            <button type="button" class="btn-sm btn-danger" onclick="this.parentElement.remove()">삭제</button>
+        `;
+        filterContainerTab1.appendChild(div);
+      };
+      
+      function getFiltersTab1() {
+          const filters = [];
+          filterContainerTab1.querySelectorAll('.filter-row').forEach(row => {
+              const key = row.querySelector('.filter-key').value.trim();
+              const valStr = row.querySelector('.filter-values').value.trim();
+              if (key && valStr) {
+                  filters.push({ key: key, values: valStr.split(',').map(v => v.trim()).filter(v => v !== "") });
+              }
+          });
+          return filters;
+      }
+      
+      // Init Tab 1
+      document.addEventListener('DOMContentLoaded', () => {
+         addFilterRowTab1("group", "내부자료, 자치법규정보시스템");
+      });
+
+      // Tab 1 Submit Logic
+      const scenarioForm = document.getElementById('scenarioForm');
+      const scenarioResultContainer = document.getElementById('scenarioResultContainer');
+      const searchResultPoints = document.getElementById('searchResultPoints');
+      const expansionDisplay = document.getElementById('expansionDisplay');
+      
+      scenarioForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const query = document.getElementById('userQuery').value.trim();
+        const urlExpand = document.getElementById('apiExpand').value.trim();
+        const urlRetrieve = document.getElementById('apiRetrieve').value.trim();
+        const statusEl = document.getElementById('scenarioStatus');
+
+        if (!query) { statusEl.innerHTML = '<span class="error">질의문을 입력해주세요.</span>'; return; }
+
+        statusEl.innerHTML = '🚀 Step 1. 질의 확장 API 호출 중...';
+        scenarioResultContainer.style.display = 'block';
+        expansionDisplay.innerHTML = '<div class="muted">Waiting...</div>';
+        searchResultPoints.innerHTML = '<div class="muted">Waiting...</div>';
+        document.getElementById('latencyDisplay').innerHTML = '';
+
+        try {
+            // STEP 1
+            const bodyStep1 = { contents: query, dialog_history: [] };
+            document.getElementById('curlStep1').textContent = generateCurl(urlExpand, bodyStep1);
+            
+            const expandRes = await fetch(urlExpand, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(bodyStep1)
+            });
+            if (!expandRes.ok) throw new Error(`Step 1 Error: ${expandRes.status}`);
+            const expandData = await expandRes.json();
+            
+            const rawAnswer = expandData.llm_result.answer.replace(/```json/g, '').replace(/```/g, '');
+            const parsedAnswer = JSON.parse(rawAnswer);
+            
+            const searchQueriesHtml = parsedAnswer.search_queries.map(q => `<span class="tag">${q}</span>`).join('');
+            expansionDisplay.innerHTML = `
+                <div class="expansion-result">
+                    <h3>💡 확장된 질의 (Query Complete)</h3>
+                    <div>${escapeHTML(parsedAnswer.query_complete)}</div>
+                    <h3>🔍 검색 키워드</h3>
+                    <div class="tags">${searchQueriesHtml}</div>
+                    <div class="status" style="margin-top:8px; font-size:12px">Token: ${expandData.llm_result.token_count} | Time: ${expandData.llm_result.processing_time}s</div>
+                </div>`;
+
+            // STEP 2
+            statusEl.innerHTML = '🚀 Step 2. 검색 API 호출 중...';
+            const searchQueries = [query, parsedAnswer.query_complete, ...parsedAnswer.search_queries];
+            
+            const bodyStep2 = {
+                "queries": searchQueries,
+                "base_query": parsedAnswer.query_complete,
+                "collection_name": document.getElementById('p_collection_name').value.trim(),
+                "retrieve_type": document.getElementById('p_retrieve_type').value,
+                "dense_limit": Number(document.getElementById('p_dense_limit').value),
+                "sparse_limit": Number(document.getElementById('p_sparse_limit').value),
+                "final_limit": Number(document.getElementById('p_final_limit').value),
+                "dense_embedding": { "name": "jina_v3_dense_vector", "type": "jina" },
+                "sparse_embedding": { "name": "kiwi_bm25", "type": "bm25" },
+                "reranking": {
+                    "include_summary": false,
+                    "is_active": document.getElementById('chk_reranking').checked,
+                    "target": document.getElementById('p_reranking_target').value.trim()
+                },
+                "penalty": {
+                    "is_active": document.getElementById('chk_penalty').checked,
+                    "criteria": Number(document.getElementById('p_pen_criteria').value),
+                    "insenstivity": Number(document.getElementById('p_pen_insensitivity').value),
+                    "min_length": Number(document.getElementById('p_pen_min_length').value),
+                    "noise_weight": Number(document.getElementById('p_pen_noise_weight').value)
+                },
+                "filters": getFiltersTab1(),
+                "add_next_point": document.getElementById('chk_nextpoint').checked,
+                "added_chunk_max_size": Number(document.getElementById('p_added_chunk_max_size').value)
+            };
+            
+            document.getElementById('curlStep2').textContent = generateCurl(urlRetrieve, bodyStep2);
+
+            const retrieveRes = await fetch(urlRetrieve, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(bodyStep2)
+            });
+            if (!retrieveRes.ok) throw new Error(`Step 2 Error: ${retrieveRes.status}`);
+            const retrieveData = await retrieveRes.json();
+            
+            statusEl.innerHTML = '<span class="success">✅ 검색 완료</span>';
+            
+            if (retrieveData.latency_details) {
+                document.getElementById('latencyDisplay').innerHTML = retrieveData.latency_details.map(l => `
+                    <div class="latency-item"><div class="lbl">${l.desc}</div><div class="val">${l.latency.toFixed(4)}s</div></div>
+                `).join('');
+            }
+
+            searchResultPoints.innerHTML = '';
+            const docs = retrieveData.results?.[0]?.retrieved_documents || [];
+            if (docs.length === 0) searchResultPoints.innerHTML = '<div class="muted">검색 결과가 없습니다.</div>';
+            else docs.forEach((doc, idx) => searchResultPoints.appendChild(createPointElementTab1(doc, idx)));
+
+        } catch (err) {
+            console.error(err);
+            statusEl.innerHTML = `<span class="error">오류 발생: ${err.message}</span>`;
+        }
+      });
+
+      // View Toggle for Tab 1
+      window.toggleTextViewTab1 = function(btn, mode) {
+          const container = btn.closest('.text-block');
+          const bodyDiv = container.querySelector('.text-block__body');
+          if (mode === 'raw') bodyDiv.textContent = bodyDiv.dataset.raw;
+          else if (mode === 'html') bodyDiv.innerHTML = bodyDiv.dataset.html;
+          else if (mode === 'copy') copyText(bodyDiv.dataset.raw);
+      };
+
+      function createPointElementTab1(point, idx) {
+        const payload = point.payload || {};
+        const div = document.createElement("div");
+        div.className = "point";
+        const safeText = escapeHTML(payload.text);
+        const safeParentText = escapeHTML(payload.parent_text);
+        const scoreHtml = point.score ? `<span class="pill" style="background:#fef3c7; color:#b45309">Score: ${point.score.toFixed(4)}</span>` : '';
+
+        div.innerHTML = `
+            <header>
+              <div class="actions"><span class="pill">#${idx + 1}</span>${scoreHtml}<span class="muted" style="font-size:11px">ID: ${point.id}</span></div>
+            </header>
+            <div class="meta-grid">
+              <div class="meta-item"><div class="meta-label">File Path</div><div class="meta-value" style="font-size:13px">${createFileLink(payload.file_path, payload.page_num)}</div></div>
+              <div class="meta-item" style="flex:0"><div class="meta-label">Page</div><div class="meta-value">${escapeHTML(payload.page_num)}</div></div>
+              <div class="meta-item"><div class="meta-label">Group / Service</div><div class="meta-value" style="font-size:13px">${escapeHTML(payload.group)} / ${escapeHTML(payload.service)}</div></div>
+            </div>
+            <div class="text-block">
+                <div class="text-block__header"><div class="text-block__title">Text (Chunk)</div>
+                    <div class="view-buttons">
+                        <button type="button" class="view-btn" onclick="toggleTextViewTab1(this, 'raw')">Raw</button>
+                        <button type="button" class="view-btn" onclick="toggleTextViewTab1(this, 'html')">HTML</button>
+                        <button type="button" class="view-btn" onclick="toggleTextViewTab1(this, 'copy')">Copy</button>
+                    </div>
+                </div>
+                <div class="text-block__body" data-raw="${safeText}" data-html="${safeText}">${payload.text}</div>
+            </div>
+            <div class="text-block">
+                <div class="text-block__header"><div class="text-block__title" style="color:var(--muted)">Parent Text</div>
+                     <div class="view-buttons"><button type="button" class="view-btn" onclick="toggleTextViewTab1(this, 'raw')">Raw</button><button type="button" class="view-btn" onclick="toggleTextViewTab1(this, 'html')">HTML</button></div>
+                </div>
+                 <div class="text-block__body" style="background:#fff" data-raw="${safeParentText}" data-html="${safeParentText}">${payload.parent_text}</div>
+            </div>
+            <details style="margin-top:6px; border:1px dashed var(--border); background:#fff;"><summary>전체 Payload 보기</summary><pre class="code-display" style="background:transparent; border:none; color:#333; margin:0">${JSON.stringify(payload, null, 2)}</pre></details>
+        `;
+        return div;
+      }
+
+
+      // ==========================================
+      // TAB 2: Qdrant Points Tuning Logic (User Code Impl)
+      // ==========================================
+      const apiBaseInput = document.getElementById("apiBase");
+      const collectionInput = document.getElementById("collectionName");
+      const fileInput = document.getElementById("fileName");
+      const pageInput = document.getElementById("pageNum");
+      const parentIdxInput = document.getElementById("parentIdx");
+      const offsetInput = document.getElementById("offset");
+      const limitInput = document.getElementById("limit");
+      const searchForm = document.getElementById("searchForm");
+      const searchStatus = document.getElementById("searchStatus");
+      const pointsContainer = document.getElementById("pointsContainer");
+      const selectAllBtn = document.getElementById("selectAllBtn");
+      const clearSelectionBtn = document.getElementById("clearSelectionBtn");
+      const selectionHint = document.getElementById("selectionHint");
+      const tuneForm = document.getElementById("tuneForm");
+      const boostKeywordsInput = document.getElementById("boostKeywords");
+      const tuneStatus = document.getElementById("tuneStatus");
+      const tuneBtn = document.getElementById("tuneBtn");
+
+      const state = {
+        points: [],
+        selected: new Set(),
+      };
+
+      selectAllBtn.addEventListener("click", () => {
+        state.points.forEach((p) => state.selected.add(p.id));
+        syncSelectionUI();
+      });
+
+      clearSelectionBtn.addEventListener("click", () => {
+        state.selected.clear();
+        syncSelectionUI();
+      });
+
+      searchForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        searchStatus.textContent = "";
+        tuneStatus.textContent = "";
+        pointsContainer.innerHTML = "";
+        state.points = [];
+        state.selected.clear();
+        syncSelectionUI();
+
+        const base = apiBaseInput.value.trim().replace(/\$/, "");
+        const collection = collectionInput.value.trim();
+        const fileName = fileInput.value.trim();
+        const page = pageInput.value ? Number(pageInput.value) : null;
+        const parentIdx = parentIdxInput.value ? Number(parentIdxInput.value) : null;
+        const offset = offsetInput.value.trim() || null;
+        const limitValue = limitInput.value.trim();
+        const limit = limitValue === "" ? null : Number(limitValue);
+
+        if (!base || !collection || !fileName) {
+          searchStatus.innerHTML =
+            '<span class="error">API Base, Collection, File Name은 필수입니다.</span>';
+          return;
+        }
+        if (limit === null || Number.isNaN(limit) || limit < 0) {
+          searchStatus.innerHTML = '<span class="error">Limit은 0 이상의 숫자여야 합니다.</span>';
+          return;
+        }
+
+        const payload = {
+          file_name: fileName,
+          limit,
+          page_num: page || null,
+          parent_idx: parentIdx ?? null,
+          offset: offset || null,
+        };
+
+        searchStatus.textContent = "포인트를 불러오는 중...";
+
+        try {
+          const res = await fetch(`${base}/collections/${encodeURIComponent(collection)}/points`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(msg || `요청 실패 (status: ${res.status})`);
+          }
+          const data = await res.json();
+          const points = data.points || [];
+          points.sort((a, b) => a.payload.page_num - b.payload.page_num);
+          state.points = points;
+          renderPoints(points);
+          searchStatus.innerHTML = `<strong>${points.length}</strong>개의 포인트를 불러왔습니다.`;
+        } catch (err) {
+          console.error(err);
+          searchStatus.innerHTML = '<span class="error">검색 실패: ' + err.message + "</span>";
+        } finally {
+          syncSelectionUI();
+        }
+      });
+
+      tuneForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        tuneStatus.textContent = "";
+
+        const base = apiBaseInput.value.trim().replace(/\$/, "");
+        const collection = collectionInput.value.trim();
+        const boostKeywords = boostKeywordsInput.value.trim();
+        const pointIds = Array.from(state.selected);
+
+        if (!base || !collection) {
+          tuneStatus.innerHTML = '<span class="error">API Base와 Collection을 입력하세요.</span>';
+          return;
+        }
+        if (pointIds.length === 0) {
+          tuneStatus.innerHTML = '<span class="error">업데이트할 포인트를 선택하세요.</span>';
+          return;
+        }
+        if (!boostKeywords) {
+          tuneStatus.innerHTML = '<span class="error">Boost keywords를 입력하세요.</span>';
+          return;
+        }
+
+        const payload = {
+          point_ids: pointIds,
+          boost_keywords: boostKeywords,
+        };
+
+        tuneBtn.disabled = true;
+        tuneStatus.textContent = "업데이트 중...";
+
+        try {
+          const res = await fetch(`${base}/collections/${encodeURIComponent(collection)}/points`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(msg || `요청 실패 (status: ${res.status})`);
+          }
+          const data = await res.json();
+          tuneStatus.innerHTML = '<span class="success">완료:</span> ' + JSON.stringify(data);
+        } catch (err) {
+          console.error(err);
+          tuneStatus.innerHTML = '<span class="error">업데이트 실패: ' + err.message + "</span>";
+        } finally {
+          tuneBtn.disabled = false;
+        }
+      });
+
+      function formatBoostKeywords(value) {
+        if (Array.isArray(value)) {
+          return value.length ? value.join(", ") : "-";
+        }
+        return value || "-";
+      }
+
+      function setTextBody(el, mode) {
+        const raw = el.dataset.raw || "";
+        el.dataset.mode = mode;
+        if (mode === "html") {
+          el.innerHTML = raw || '<span class="muted">내용 없음</span>';
+        } else {
+          el.textContent = raw || "내용 없음";
+        }
+      }
+
+      function setActiveButtons(container, targetId, mode) {
+        container.querySelectorAll(`[data-target="${targetId}"][data-mode]`).forEach((btn) => {
+          btn.classList.toggle("is-active", btn.dataset.mode === mode);
+        });
+      }
+
+      function renderPoints(points) {
+        pointsContainer.innerHTML = "";
+        if (!points.length) {
+          pointsContainer.innerHTML = '<div class="muted">검색 결과가 없습니다.</div>';
+          return;
+        }
+        points.forEach((p, idx) => {
+          const payload = p.payload || {};
+          const div = document.createElement("div");
+          div.className = "point";
+          const payloadText = JSON.stringify(payload, null, 2);
+          const parentText = payload.parent_text || "";
+          const chunkText = payload.text || "";
+          const service = payload.service || "-";
+          const group = payload.group || "-";
+          const boostKeywords = formatBoostKeywords(payload.boost_keywords);
+          const filePath = payload.file_path || "-";
+          const pageNum =
+            payload.page_num === 0 || payload.page_num ? String(payload.page_num) : "-";
+
+          const parentId = `parent-${p.id}-${idx}`;
+          const textId = `text-${p.id}-${idx}`;
+          div.innerHTML = `
+            <header>
+              <div class="actions">
+                <input type="checkbox" data-point-id="${p.id}" aria-label="select point ${p.id}" />
+                <span class="pill">#${idx + 1}</span>
+                <span class="muted">ID: ${p.id}</span>
+              </div>              
+            </header>
+            <div class="meta-grid">
+
+              <div class="meta-item">
+                <div class="meta-label">File Path</div>
+                <div class="meta-value">${createFileLink(filePath, pageNum)}</div>
+              </div>
+              <div class="meta-item">
+                <div class="meta-label">Page Num</div>
+                <div class="meta-value">${escapeHTML(pageNum)}</div>
+              </div>
+            </div>
+            <div class="text-block">
+              <div class="text-block__header">
+                <div class="text-block__title">Parent Text</div>
+                <div class="view-buttons">
+                  <button type="button" class="view-btn" data-target="${parentId}" data-mode="html">HTML 보기</button>
+                  <button type="button" class="view-btn" data-target="${parentId}" data-mode="raw">원본 보기</button>
+                  <button type="button" class="view-btn" data-target="${parentId}" data-action="copy">복사하기</button>
+                </div>
+              </div>
+              <div class="text-block__body" data-content="${parentId}"></div>
+            </div>
+            <div class="text-block">
+              <div class="text-block__header">
+                <div class="text-block__title">Text</div>
+                <div class="view-buttons">
+                  <button type="button" class="view-btn" data-target="${textId}" data-mode="html">HTML 보기</button>
+                  <button type="button" class="view-btn" data-target="${textId}" data-mode="raw">원본 보기</button>
+                  <button type="button" class="view-btn" data-target="${textId}" data-action="copy">복사하기</button>
+                </div>
+              </div>
+              <div class="text-block__body" data-content="${textId}"></div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Service</div>
+              <div class="meta-value">${escapeHTML(service)}</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-label">Group</div>
+              <div class="meta-value">${escapeHTML(group)}</div>
+            </div>            
+            <div class="meta-item">
+              <div class="meta-label">Boost Keywords</div>
+              <div class="meta-value">${escapeHTML(boostKeywords)}</div>
+            </div>
+            <details class="payload-details">
+              <summary>원본 payload 보기</summary>
+              <pre class="payload"></pre>
+            </details>
+          `;
+          const checkbox = div.querySelector("input[type='checkbox']");
+          checkbox.checked = state.selected.has(p.id);
+          checkbox.addEventListener("change", () => {
+            if (checkbox.checked) {
+              state.selected.add(p.id);
+            } else {
+              state.selected.delete(p.id);
+            }
+            syncSelectionUI();
+          });
+          const parentBody = div.querySelector(`[data-content="${parentId}"]`);
+          const textBody = div.querySelector(`[data-content="${textId}"]`);
+          parentBody.dataset.raw = parentText;
+          textBody.dataset.raw = chunkText;
+          setTextBody(parentBody, "html");
+          setTextBody(textBody, "html");
+          setActiveButtons(div, parentId, "html");
+          setActiveButtons(div, textId, "html");
+
+          div.querySelectorAll(`[data-target="${parentId}"]`).forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const action = btn.dataset.action;
+              if (action === "copy") {
+                copyText(parentBody.dataset.raw || "");
+                return;
+              }
+              const mode = btn.dataset.mode || "raw";
+              setTextBody(parentBody, mode);
+              setActiveButtons(div, parentId, mode);
+            });
+          });
+
+          div.querySelectorAll(`[data-target="${textId}"]`).forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const action = btn.dataset.action;
+              if (action === "copy") {
+                copyText(textBody.dataset.raw || "");
+                return;
+              }
+              const mode = btn.dataset.mode || "raw";
+              setTextBody(textBody, mode);
+              setActiveButtons(div, textId, mode);
+            });
+          });
+
+          const payloadPre = div.querySelector("pre.payload");
+          payloadPre.textContent = payloadText;
+          pointsContainer.appendChild(div);
+        });
+      }
+
+      function syncSelectionUI() {
+        selectionHint.textContent = `선택된 포인트: ${state.selected.size}`;
+        tuneBtn.disabled = state.selected.size === 0;
+        document.querySelectorAll("[data-point-id]").forEach((box) => {
+          const id = box.getAttribute("data-point-id");
+          box.checked = state.selected.has(id);
+        });
+      }
+    </script>
+  </body>
+</html>
